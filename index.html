@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kameti Tracker</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.1/dist/chart.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <style>
+        /* General Styles & Dark Theme */
+        :root {
+            --bg-color: #121212;
+            --primary-color: #f7f7f7;
+            --accent-color: #00b0ff;
+            --card-bg: #1e1e1e;
+            --border-color: #333;
+            --shadow-color: rgba(0, 0, 0, 0.5);
+            --success-color: #4CAF50;
+            --error-color: #F44336;
+            --warning-color: #FFC107;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow-x: hidden;
+            flex-direction: column;
+        }
+
+        .container {
+            width: 95%;
+            max-width: 1200px;
+            padding: 1rem;
+            box-sizing: border-box;
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 10px var(--shadow-color);
+            border: 1px solid var(--border-color);
+            margin: 1rem auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+
+        .header h1 {
+            font-size: 2rem;
+            color: var(--accent-color);
+            margin-bottom: 0.5rem;
+        }
+
+        .header p {
+            color: var(--primary-color);
+            font-size: 0.9rem;
+        }
+        
+        .current-holder-display {
+            text-align: center;
+            margin-bottom: 1.5rem;
+            background-color: #2c2c2c;
+            padding: 0.75rem;
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+        }
+        
+        .current-holder-display p {
+            font-size: 1.25rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin: 0;
+        }
+
+        .tabs {
+            display: flex;
+            justify-content: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .tab-button {
+            padding: 0.75rem 1rem;
+            border-radius: 8px;
+            background-color: transparent;
+            color: var(--primary-color);
+            border: 1px solid var(--border-color);
+            cursor: pointer;
+            transition: all 0.2s ease-in-out;
+            margin: 0 0.25rem;
+            flex-grow: 1;
+        }
+
+        .tab-button.active {
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border-color: var(--accent-color);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 1rem;
+            margin-bottom: 1rem;
+        }
+
+        .stats-card {
+            background-color: var(--bg-color);
+            padding: 1rem;
+            border-radius: 8px;
+            text-align: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .stats-card h3 {
+            font-size: 1rem;
+            color: var(--primary-color);
+            margin: 0;
+        }
+
+        .stats-card p {
+            font-size: 1.5rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin: 0.5rem 0 0;
+        }
+
+        .members-list, .payments-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        .members-list li, .payments-list li {
+            background-color: var(--bg-color);
+            padding: 1rem;
+            border-radius: 8px;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border: 1px solid var(--border-color);
+        }
+
+        .payments-list .date-group {
+            margin-top: 1.5rem;
+        }
+
+        .payments-list .date-group h4 {
+            margin: 0 0 0.5rem;
+            color: var(--accent-color);
+        }
+
+        .members-list li .name {
+            font-weight: bold;
+        }
+        
+        .members-list li .status-pending {
+            font-weight: bold;
+            color: var(--error-color);
+            margin-left: 1rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            margin-bottom: 1rem;
+            align-items: stretch;
+        }
+        
+        .form-group-row {
+            display: flex;
+            flex-direction: row;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .form-group input, .form-group select, .form-group-row input, .form-group-row select {
+            flex: 1;
+            padding: 0.75rem;
+            border-radius: 8px;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            border: 1px solid var(--border-color);
+            width: 100%;
+            box-sizing: border-box;
+        }
+        
+        .form-group-row input[type="number"] {
+            flex: 0.5;
+        }
+
+        .form-group button, .form-group-row button {
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            background-color: var(--accent-color);
+            color: var(--bg-color);
+            border: none;
+            cursor: pointer;
+            width: 100%;
+        }
+
+        .form-group-row button {
+            flex: 0.5;
+            width: auto;
+        }
+
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 1rem 2rem;
+            border-radius: 8px;
+            color: white;
+            z-index: 1000;
+            display: none;
+            text-align: center;
+            box-shadow: 0 4px 10px var(--shadow-color);
+            white-space: nowrap;
+        }
+        
+        .message-box.success {
+            background-color: var(--success-color);
+        }
+
+        .message-box.error {
+            background-color: var(--error-color);
+        }
+
+        /* Modal styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal-content {
+            background-color: var(--card-bg);
+            padding: 2rem;
+            border-radius: 12px;
+            min-width: 300px;
+            max-width: 500px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.5);
+            max-height: 80vh;
+            overflow-y: auto;
+            text-align: center;
+        }
+
+        .btn-red {
+            background-color: var(--error-color);
+            color: var(--primary-color);
+            border: none;
+            cursor: pointer;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+        }
+        
+        .chart-container {
+            width: 100%;
+            max-width: 600px;
+            margin: 2rem auto;
+            height: 300px;
+        }
+        
+        .payment-status-message {
+            margin-top: 1rem;
+            padding: 1rem;
+            border-radius: 8px;
+            font-weight: bold;
+        }
+
+        .payment-status-message.pending {
+            background-color: #2c2c2c;
+            color: var(--error-color);
+            border: 1px solid var(--error-color);
+        }
+
+        .payment-status-message.warning {
+            background-color: #2c2c2c;
+            color: var(--warning-color);
+            border: 1px solid var(--warning-color);
+        }
+
+        .payment-status-message.completed {
+            background-color: #2c2c2c;
+            color: var(--success-color);
+            border: 1px solid var(--success-color);
+        }
+
+        /* Date input styling */
+        input[type="date"] {
+            padding: 0.75rem;
+            border-radius: 8px;
+            background-color: var(--bg-color);
+            color: var(--primary-color);
+            border: 1px solid var(--border-color);
+            font-family: inherit;
+        }
+
+        input[type="date"]::-webkit-calendar-picker-indicator {
+            filter: invert(1);
+            cursor: pointer;
+        }
+
+        /* Calendar styling */
+        #calendar {
+            max-width: 900px;
+            margin: 2rem auto;
+            background-color: var(--card-bg);
+            border-radius: 8px;
+            border: 1px solid var(--border-color);
+            padding: 1rem;
+        }
+
+        .fc {
+            color: var(--primary-color);
+        }
+
+        .fc-toolbar-title {
+            color: var(--accent-color);
+        }
+
+        .fc-col-header-cell-cushion {
+            color: var(--primary-color);
+        }
+
+        .fc-daygrid-day-number {
+            color: var(--primary-color);
+        }
+
+        .fc-event {
+            background-color: var(--accent-color);
+            border-color: var(--accent-color);
+            color: var(--bg-color);
+            cursor: pointer;
+        }
+
+        .fc-daygrid-event-dot {
+            border-color: var(--bg-color) !important;
+        }
+
+        .fc-button {
+            background-color: var(--bg-color) !important;
+            border-color: var(--border-color) !important;
+            color: var(--primary-color) !important;
+        }
+
+        .fc-button-active {
+            background-color: var(--accent-color) !important;
+            color: var(--bg-color) !important;
+        }
+
+        /* Payment details modal */
+        #payment-details-modal {
+            display: none;
+        }
+
+        .payment-details-content {
+            max-width: 600px;
+            width: 90%;
+        }
+
+        .payment-details-list {
+            list-style: none;
+            padding: 0;
+            margin: 1rem 0;
+        }
+
+        .payment-details-list li {
+            padding: 0.5rem;
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Responsive adjustments */
+        @media (min-width: 768px) {
+            .container {
+                padding: 2rem;
+            }
+            .header h1 {
+                font-size: 2.5rem;
+            }
+            .header p {
+                font-size: 1rem;
+            }
+            .current-holder-display p {
+                font-size: 1.5rem;
+            }
+            .stats-card h3 {
+                font-size: 1.2rem;
+            }
+            .stats-card p {
+                font-size: 2rem;
+            }
+            .form-group {
+                flex-direction: row;
+                align-items: center;
+            }
+            .form-group-row {
+                flex-direction: row;
+            }
+            .form-group-row button {
+                width: auto;
+            }
+            .tab-button {
+                flex-grow: 0;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="message-box" id="message-box"></div>
+
+    <div id="passcode-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Admin Panel</h2>
+            <p>Enter the passcode to access admin controls.</p>
+            <input type="password" id="passcode-input" placeholder="Passcode" style="width: 100%; padding: 0.5rem; margin-top: 1rem;">
+            <button id="passcode-submit" style="background-color: var(--accent-color); color: var(--bg-color); padding: 0.5rem 1rem; border-radius: 8px; margin-top: 1rem;">Submit</button>
+            <button id="passcode-cancel" style="background-color: transparent; color: var(--accent-color); padding: 0.5rem 1rem; border-radius: 8px; margin-top: 1rem; border: 1px solid var(--accent-color);">Cancel</button>
+        </div>
+    </div>
+    
+    <div id="confirm-modal" class="modal" style="display: none;">
+        <div class="modal-content">
+            <h2>Confirm Reset</h2>
+            <p>Are you sure you want to reset all data? This action cannot be undone.</p>
+            <div style="display: flex; justify-content: space-around; margin-top: 1rem;">
+                <button id="confirm-reset-btn" class="btn-red">Reset</button>
+                <button id="cancel-reset-btn" class="tab-button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="payment-details-modal" class="modal" style="display: none;">
+        <div class="modal-content payment-details-content">
+            <h2 id="payment-details-title">Payment Details</h2>
+            <div id="payment-details-date" style="color: var(--accent-color); margin-bottom: 1rem;"></div>
+            <h3>Payments Received</h3>
+            <ul id="payment-details-list" class="payment-details-list">
+                </ul>
+            <button id="close-payment-details" class="tab-button" style="margin-top: 1rem;">Close</button>
+        </div>
+    </div>
+
+    <div class="container">
+        <div class="header">
+            <h1>Kameti Tracker</h1>
+            <p>Your simple and effective kameti management tool.</p>
+        </div>
+        
+        <div class="current-holder-display">
+            <p id="current-holder-name">Kameti Holder: Not Set</p>
+        </div>
+        
+        <div class="tabs">
+            <button id="user-tab-btn" class="tab-button active">User Panel</button>
+            <button id="admin-tab-btn" class="tab-button">Admin Panel</button>
+            <button id="calendar-tab-btn" class="tab-button">Calendar View</button>
+        </div>
+
+        <div id="user-panel" class="tab-content active">
+            <h2>Kameti Financials</h2>
+            <div class="stats-grid">
+                <div class="stats-card">
+                    <h3>Total Kameti Amount</h3>
+                    <p id="total-kameti-amount">PKR 0</p>
+                </div>
+                <div class="stats-card">
+                    <h3>Amount Remaining</h3>
+                    <p id="amount-remaining">PKR 0</p>
+                </div>
+            </div>
+            
+            <h2 style="margin-top: 2rem;">My Status</h2>
+            <div class="form-group">
+                <select id="user-select">
+                    <option value="">Select your name</option>
+                </select>
+                <button id="check-status-btn">Check Status</button>
+            </div>
+            <div id="user-stats" style="display: none;">
+                <div class="stats-grid">
+                    <div class="stats-card">
+                        <h3>Total Paid</h3>
+                        <p id="total-paid">PKR 0</p>
+                    </div>
+                    <div class="stats-card">
+                        <h3>Total Received</h3>
+                        <p id="total-received">PKR 0</p>
+                    </div>
+                </div>
+                <div id="payment-status-message" class="payment-status-message" style="display: none;"></div>
+            </div>
+            
+            <h2 style="margin-top: 2rem;">Kameti History</h2>
+            <div class="chart-container">
+                <canvas id="kameti-history-chart"></canvas>
+            </div>
+            
+            <h2 style="margin-top: 2rem;">Member Contributions</h2>
+            <div class="chart-container">
+                <canvas id="contributions-chart"></canvas>
+            </div>
+        </div>
+
+        <div id="admin-panel" class="tab-content">
+            <h2>Admin Controls</h2>
+            
+            <h3>Current Date: <span id="current-date-display"></span></h3>
+            
+            <h3>Add Member</h3>
+            <div class="form-group form-group-row">
+                <input type="text" id="member-name-input" placeholder="Enter member name">
+                <button id="add-member-btn">Add Member</button>
+            </div>
+            
+            <h3>All Members</h3>
+            <ul id="members-list" class="members-list">
+                </ul>
+            
+            <h3 style="margin-top: 2rem;">Set Current Kameti Holder</h3>
+            <div class="form-group form-group-row">
+                <select id="holder-select">
+                    <option value="">Select new holder</option>
+                </select>
+                <button id="set-holder-btn">Set Holder</button>
+            </div>
+            
+            <h3 style="margin-top: 2rem;">Record Payment</h3>
+            <div class="form-group">
+                <div class="form-group-row">
+                    <select id="payment-member-select">
+                        <option value="">Select member</option>
+                    </select>
+                    <input type="number" id="payment-amount-input" placeholder="Amount (PKR)">
+                </div>
+                <div class="form-group-row">
+                    <input type="date" id="payment-date-input" style="flex: 1;">
+                    <button id="record-payment-btn">Record Payment</button>
+                </div>
+            </div>
+            
+            <h3 style="margin-top: 2rem;">Record Payout</h3>
+            <div class="form-group">
+                <div class="form-group-row">
+                    <select id="payout-member-select">
+                        <option value="">Select member</option>
+                    </select>
+                    <input type="number" id="payout-amount-input" placeholder="Amount (PKR)">
+                </div>
+                <div class="form-group-row">
+                    <input type="date" id="payout-date-input" style="flex: 1;">
+                    <button id="record-payout-btn">Record Payout</button>
+                </div>
+            </div>
+
+            <h3 style="margin-top: 2rem;">Detailed Payment History</h3>
+            <ul id="payments-history-list" class="payments-list">
+                </ul>
+
+            <div style="display: flex; justify-content: space-around; margin-top: 2rem;">
+                <button id="start-new-month-btn" class="tab-button" style="background-color: var(--success-color); display: none;">Start New Month</button>
+                <button id="reset-btn" class="btn-red">Reset All Data</button>
+            </div>
+        </div>
+
+        <div id="calendar-panel" class="tab-content">
+            <h2>Payment Calendar</h2>
+            <p>Click on a date to view payment details</p>
+            <div id="calendar"></div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.js"></script>
+    <script>
+        // DOM Elements
+        const userTabBtn = document.getElementById('user-tab-btn');
+        const adminTabBtn = document.getElementById('admin-tab-btn');
+        const calendarTabBtn = document.getElementById('calendar-tab-btn');
+        const userPanel = document.getElementById('user-panel');
+        const adminPanel = document.getElementById('admin-panel');
+        const calendarPanel = document.getElementById('calendar-panel');
+        const passcodeModal = document.getElementById('passcode-modal');
+        const passcodeInput = document.getElementById('passcode-input');
+        const passcodeSubmitBtn = document.getElementById('passcode-submit');
+        const passcodeCancelBtn = document.getElementById('passcode-cancel');
+        const addMemberBtn = document.getElementById('add-member-btn');
+        const memberNameInput = document.getElementById('member-name-input');
+        const membersList = document.getElementById('members-list');
+        const userSelect = document.getElementById('user-select');
+        const checkStatusBtn = document.getElementById('check-status-btn');
+        const userStats = document.getElementById('user-stats');
+        const totalPaidEl = document.getElementById('total-paid');
+        const totalReceivedEl = document.getElementById('total-received');
+        const paymentStatusMessageEl = document.getElementById('payment-status-message');
+        const paymentMemberSelect = document.getElementById('payment-member-select');
+        const paymentAmountInput = document.getElementById('payment-amount-input');
+        const paymentDateInput = document.getElementById('payment-date-input');
+        const recordPaymentBtn = document.getElementById('record-payment-btn');
+        const payoutMemberSelect = document.getElementById('payout-member-select');
+        const payoutAmountInput = document.getElementById('payout-amount-input');
+        const payoutDateInput = document.getElementById('payout-date-input');
+        const recordPayoutBtn = document.getElementById('record-payout-btn');
+        const resetButton = document.getElementById('reset-btn');
+        const confirmModal = document.getElementById('confirm-modal');
+        const confirmResetBtn = document.getElementById('confirm-reset-btn');
+        const cancelResetBtn = document.getElementById('cancel-reset-btn');
+        const messageBox = document.getElementById('message-box');
+        const currentHolderNameEl = document.getElementById('current-holder-name');
+        const holderSelect = document.getElementById('holder-select');
+        const setHolderBtn = document.getElementById('set-holder-btn');
+        const paymentsHistoryList = document.getElementById('payments-history-list');
+        const totalKametiAmountEl = document.getElementById('total-kameti-amount');
+        const amountRemainingEl = document.getElementById('amount-remaining');
+        const currentDateDisplay = document.getElementById('current-date-display');
+        const paymentDetailsModal = document.getElementById('payment-details-modal');
+        const paymentDetailsTitle = document.getElementById('payment-details-title');
+        const paymentDetailsDate = document.getElementById('payment-details-date');
+        const paymentDetailsList = document.getElementById('payment-details-list');
+        const closePaymentDetails = document.getElementById('close-payment-details');
+        const startNewMonthBtn = document.getElementById('start-new-month-btn');
+
+        // Constants
+        const MONTHLY_CONTRIBUTION = 3000;
+        const PAYMENT_DEADLINE_DAY = 5;
+
+        // Data Variables
+        let kametiMembers = [];
+        let paymentsHistory = [];
+        let currentKametiHolderId = null;
+        let currentMonthId = 'initial-month'; // New variable to track the current month's cycle
+        let contributionsChart, kametiHistoryChart;
+        let calendar;
+
+        // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
+         const firebaseConfig = {
+    apiKey: "AIzaSyAZFu6gjgQSNycU0nwwuKaUPIW474QGBlY",
+    authDomain: "comety-bc.firebaseapp.com",
+    projectId: "comety-bc",
+    storageBucket: "comety-bc.firebasestorage.app",
+    messagingSenderId: "374104758281",
+    appId: "1:374104758281:web:df93e2229ddadf955840d8",
+    measurementId: "G-6GBG717HPW"
+  };
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // Firebase references
+        const kametiRef = database.ref('kameti');
+        const membersRef = kametiRef.child('members');
+        const paymentsRef = kametiRef.child('payments');
+        const currentHolderRef = kametiRef.child('currentHolder');
+        const currentMonthRef = kametiRef.child('currentMonthId');
+
+        // Utility Functions
+        function formatDate(date) {
+            const d = new Date(date);
+            const year = d.getFullYear();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${year}-${month}-${day}`;
+        }
+
+        function formatDateForDisplay(dateStr) {
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            return new Date(dateStr).toLocaleDateString(undefined, options);
+        }
+
+        function showMessage(message, type) {
+            messageBox.textContent = message;
+            messageBox.className = `message-box ${type}`;
+            messageBox.style.display = 'block';
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 3000);
+        }
+
+        // Data Functions
+        function loadData() {
+            // Load members
+            membersRef.on('value', (snapshot) => {
+                kametiMembers = snapshot.val() || [];
+                if (kametiMembers.length === 0) {
+                    addDefaultMembers();
+                }
+                renderUI();
+            });
+
+            // Load payments
+            paymentsRef.on('value', (snapshot) => {
+                paymentsHistory = snapshot.val() || [];
+                renderUI();
+            });
+
+            // Load current holder
+            currentHolderRef.on('value', (snapshot) => {
+                currentKametiHolderId = snapshot.val();
+                renderUI();
+            });
+
+            // Load current month ID
+            currentMonthRef.on('value', (snapshot) => {
+                currentMonthId = snapshot.val() || 'initial-month';
+                renderUI();
+            });
+        }
+
+        function saveData() {
+            // Save all data to Firebase
+            membersRef.set(kametiMembers);
+            paymentsRef.set(paymentsHistory);
+            currentHolderRef.set(currentKametiHolderId);
+            currentMonthRef.set(currentMonthId);
+        }
+
+        function addDefaultMembers() {
+            const defaultMembers = [
+                { id: '1', name: 'Ali', totalPaid: 0, totalReceived: 0 },
+                { id: '2', name: 'Fatima', totalPaid: 0, totalReceived: 0 },
+                { id: '3', name: 'Hassan', totalPaid: 0, totalReceived: 0 }
+            ];
+            membersRef.set(defaultMembers, (error) => {
+                if (error) {
+                    showMessage("Failed to add default members", 'error');
+                } else {
+                    kametiMembers = defaultMembers;
+                    showMessage("Default members added", 'success');
+                }
+            });
+        }
+
+        // UI Rendering Functions
+        function renderCurrentHolder() {
+            const holder = kametiMembers.find(m => m.id === currentKametiHolderId);
+            if (holder) {
+                currentHolderNameEl.textContent = `Kameti Holder: ${holder.name}`;
+            } else {
+                currentHolderNameEl.textContent = 'Kameti Holder: Not Set';
+            }
+        }
+        
+        function renderFinancials() {
+            const totalMembers = kametiMembers.length;
+            const totalKameti = totalMembers * MONTHLY_CONTRIBUTION;
+
+            if (totalMembers > 0) {
+                totalKametiAmountEl.textContent = `PKR ${totalKameti.toFixed(2)}`;
+            } else {
+                totalKametiAmountEl.textContent = `Add members to begin.`;
+            }
+            
+            const totalPaidForMonth = paymentsHistory
+                .filter(p => p.type === 'payment' && p.monthId === currentMonthId)
+                .reduce((sum, p) => sum + p.amount, 0);
+
+            const amountRemaining = totalKameti - totalPaidForMonth;
+            if (totalMembers > 0) {
+                amountRemainingEl.textContent = `PKR ${amountRemaining.toFixed(2)}`;
+            } else {
+                 amountRemainingEl.textContent = `PKR 0.00`;
+            }
+
+            // Show/hide the "Start New Month" button
+            if (totalPaidForMonth >= 30000) {
+                startNewMonthBtn.style.display = 'block';
+            } else {
+                startNewMonthBtn.style.display = 'none';
+            }
+        }
+
+        function renderMemberDropdowns() {
+            userSelect.innerHTML = '<option value="">Select your name</option>';
+            paymentMemberSelect.innerHTML = '<option value="">Select member</option>';
+            payoutMemberSelect.innerHTML = '<option value="">Select member</option>';
+            holderSelect.innerHTML = '<option value="">Select new holder</option>';
+
+            kametiMembers.forEach(member => {
+                const option = `<option value="${member.id}">${member.name}</option>`;
+                userSelect.innerHTML += option;
+                paymentMemberSelect.innerHTML += option;
+                payoutMemberSelect.innerHTML += option;
+                holderSelect.innerHTML += option;
+            });
+        }
+        
+        function getPaymentStatus(memberId) {
+            const lastPayment = paymentsHistory.find(p => p.type === 'payment' && p.memberId === memberId && p.monthId === currentMonthId);
+            
+            if (lastPayment) {
+                return {
+                    status: 'completed',
+                    date: new Date(lastPayment.date)
+                };
+            } else {
+                return {
+                    status: 'pending'
+                };
+            }
+        }
+
+        function renderMembersList() {
+            membersList.innerHTML = '';
+            if (kametiMembers.length === 0) {
+                membersList.innerHTML = '<li>No members added yet.</li>';
+                return;
+            }
+            
+            kametiMembers.forEach(member => {
+                const paymentStatus = getPaymentStatus(member.id);
+                let statusHtml = '';
+                if (paymentStatus.status === 'pending') {
+                    statusHtml = `<span class="status-pending">(Pending)</span>`;
+                }
+                
+                const li = document.createElement('li');
+                li.innerHTML = `
+                    <div style="display: flex; align-items: center;">
+                        <span class="name">${member.name}</span>
+                        ${statusHtml}
+                    </div>
+                    <button data-id="${member.id}" style="background-color: transparent; border: none; color: var(--error-color); cursor: pointer;">
+                        <i class="fas fa-trash-alt"></i>
+                    </button>
+                `;
+                membersList.appendChild(li);
+            });
+        }
+
+        function renderPaymentsHistory() {
+            paymentsHistoryList.innerHTML = '';
+            if (paymentsHistory.length === 0) {
+                paymentsHistoryList.innerHTML = '<li>No payments or payouts recorded yet.</li>';
+                return;
+            }
+
+            // Group payments by date
+            const groupedPayments = paymentsHistory.sort((a, b) => new Date(b.date) - new Date(a.date)).reduce((acc, record) => {
+                const date = new Date(record.date).toLocaleDateString();
+                if (!acc[date]) {
+                    acc[date] = [];
+                }
+                acc[date].push(record);
+                return acc;
+            }, {});
+
+            for (const date in groupedPayments) {
+                const dateGroup = document.createElement('div');
+                dateGroup.classList.add('date-group');
+                dateGroup.innerHTML = `<h4>${date}</h4>`;
+                
+                groupedPayments[date].forEach(record => {
+                    const member = kametiMembers.find(m => m.id === record.memberId);
+                    const name = member ? member.name : 'Unknown Member';
+                    const amount = record.amount.toFixed(2);
+                    const type = record.type === 'payment' ? 'paid' : 'received';
+                    
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${name} ${type} PKR ${amount}</span>
+                    `;
+                    dateGroup.appendChild(li);
+                });
+                paymentsHistoryList.appendChild(dateGroup);
+            }
+        }
+
+        function renderCalendar() {
+            if (!calendar) {
+                const calendarEl = document.getElementById('calendar');
+                calendar = new FullCalendar.Calendar(calendarEl, {
+                    initialView: 'dayGridMonth',
+                    headerToolbar: {
+                        left: 'prev,next today',
+                        center: 'title',
+                        right: 'dayGridMonth,dayGridWeek,dayGridDay'
+                    },
+                    events: generateCalendarEvents(),
+                    eventClick: function(info) {
+                        showPaymentDetails(info.event.startStr);
+                    },
+                    eventDisplay: 'block'
+                });
+                calendar.render();
+            } else {
+                calendar.removeAllEvents();
+                calendar.addEventSource(generateCalendarEvents());
+                calendar.refetchEvents();
+            }
+        }
+
+        function generateCalendarEvents() {
+            const events = [];
+            const paymentGroups = {};
+            
+            // Group payments by date
+            paymentsHistory.forEach(payment => {
+                if (!paymentGroups[payment.date]) {
+                    paymentGroups[payment.date] = {
+                        payments: [],
+                        payouts: []
+                    };
+                }
+                
+                if (payment.type === 'payment') {
+                    paymentGroups[payment.date].payments.push(payment);
+                } else if (payment.type === 'payout') {
+                    paymentGroups[payment.date].payouts.push(payment);
+                }
+            });
+            
+            // Create calendar events
+            for (const date in paymentGroups) {
+                const group = paymentGroups[date];
+                const paymentCount = group.payments.length;
+                const payoutCount = group.payouts.length;
+                
+                if (paymentCount > 0) {
+                    events.push({
+                        title: `${paymentCount} Payment${paymentCount > 1 ? 's' : ''}`,
+                        start: date,
+                        allDay: true,
+                        color: '#4CAF50',
+                        extendedProps: {
+                            type: 'payments',
+                            date: date,
+                            payments: group.payments
+                        }
+                    });
+                }
+                
+                if (payoutCount > 0) {
+                    events.push({
+                        title: `${payoutCount} Payout${payoutCount > 1 ? 's' : ''}`,
+                        start: date,
+                        allDay: true,
+                        color: '#00b0ff',
+                        extendedProps: {
+                            type: 'payouts',
+                            date: date,
+                            payouts: group.payouts
+                        }
+                    });
+                }
+            }
+            
+            return events;
+        }
+
+        function showPaymentDetails(date) {
+            const paymentsOnDate = paymentsHistory.filter(p => p.date === date);
+            const paymentEvents = paymentsOnDate.filter(p => p.type === 'payment');
+            const payoutEvents = paymentsOnDate.filter(p => p.type === 'payout');
+            
+            paymentDetailsTitle.textContent = 'Payment Details';
+            paymentDetailsDate.textContent = formatDateForDisplay(date);
+            paymentDetailsList.innerHTML = '';
+            
+            if (paymentEvents.length > 0) {
+                const paymentHeader = document.createElement('li');
+                paymentHeader.innerHTML = '<strong>Payments Received:</strong>';
+                paymentDetailsList.appendChild(paymentHeader);
+                
+                paymentEvents.forEach(payment => {
+                    const member = kametiMembers.find(m => m.id === payment.memberId);
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${member ? member.name : 'Unknown'} paid PKR ${payment.amount.toFixed(2)}</span>
+                    `;
+                    paymentDetailsList.appendChild(li);
+                });
+            }
+            
+            if (payoutEvents.length > 0) {
+                const payoutHeader = document.createElement('li');
+                payoutHeader.innerHTML = '<strong>Payouts Given:</strong>';
+                paymentDetailsList.appendChild(payoutHeader);
+                
+                payoutEvents.forEach(payout => {
+                    const member = kametiMembers.find(m => m.id === payout.memberId);
+                    const li = document.createElement('li');
+                    li.innerHTML = `
+                        <span>${member ? member.name : 'Unknown'} received PKR ${payout.amount.toFixed(2)}</span>
+                    `;
+                    paymentDetailsList.appendChild(li);
+                });
+            }
+            
+            if (paymentEvents.length === 0 && payoutEvents.length === 0) {
+                const li = document.createElement('li');
+                li.textContent = 'No transactions on this date';
+                paymentDetailsList.appendChild(li);
+            }
+            
+            paymentDetailsModal.style.display = 'flex';
+        }
+
+        function renderCharts() {
+            const memberNames = kametiMembers.map(m => m.name);
+            const totalPaid = kametiMembers.map(m => m.totalPaid);
+            const totalReceived = kametiMembers.map(m => m.totalReceived);
+            
+            // Contributions Chart
+            if (contributionsChart) {
+                contributionsChart.destroy();
+            }
+            contributionsChart = new Chart(document.getElementById('contributions-chart'), {
+                type: 'bar',
+                data: {
+                    labels: memberNames,
+                    datasets: [
+                        {
+                            label: 'Total Paid (PKR)',
+                            data: totalPaid,
+                            backgroundColor: 'rgba(76, 175, 80, 0.8)',
+                            borderColor: 'rgba(76, 175, 80, 1)',
+                            borderWidth: 1
+                        },
+                        {
+                            label: 'Total Received (PKR)',
+                            data: totalReceived,
+                            backgroundColor: 'rgba(0, 176, 255, 0.8)',
+                            borderColor: 'rgba(0, 176, 255, 1)',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#f7f7f7'
+                            },
+                            grid: {
+                                color: '#333'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#f7f7f7'
+                            },
+                            grid: {
+                                color: '#333'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#f7f7f7'
+                            }
+                        }
+                    }
+                }
+            });
+            
+            // Kameti History Chart
+            const kametiHistory = kametiMembers.filter(m => m.totalReceived > 0);
+            if (kametiHistoryChart) {
+                kametiHistoryChart.destroy();
+            }
+            kametiHistoryChart = new Chart(document.getElementById('kameti-history-chart'), {
+                type: 'line',
+                data: {
+                    labels: kametiHistory.map(m => m.name),
+                    datasets: [{
+                        label: 'Received Amount (PKR)',
+                        data: kametiHistory.map(m => m.totalReceived),
+                        backgroundColor: 'rgba(0, 176, 255, 0.2)',
+                        borderColor: 'rgba(0, 176, 255, 1)',
+                        borderWidth: 2,
+                        tension: 0.4,
+                        pointBackgroundColor: 'rgba(0, 176, 255, 1)'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                color: '#f7f7f7'
+                            },
+                            grid: {
+                                color: '#333'
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                color: '#f7f7f7'
+                            },
+                            grid: {
+                                color: '#333'
+                            }
+                        }
+                    },
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: '#f7f7f7'
+                            }
+                        }
+                    }
+                    
+                }
+            });
+        }
+
+        function renderUI() {
+            // Current date display
+            const today = new Date();
+            const options = { year: 'numeric', month: 'long', day: 'numeric' };
+            currentDateDisplay.textContent = today.toLocaleDateString('en-US', options);
+            
+            // Set default dates for inputs
+            const todayFormatted = formatDate(today);
+            paymentDateInput.value = todayFormatted;
+            payoutDateInput.value = todayFormatted;
+            
+            renderCurrentHolder();
+            renderFinancials();
+            renderMemberDropdowns();
+            renderMembersList();
+            renderPaymentsHistory();
+            renderCalendar();
+            renderCharts();
+        }
+
+        // Event Listeners
+        userTabBtn.addEventListener('click', () => {
+            userTabBtn.classList.add('active');
+            adminTabBtn.classList.remove('active');
+            calendarTabBtn.classList.remove('active');
+            userPanel.classList.add('active');
+            adminPanel.classList.remove('active');
+            calendarPanel.classList.remove('active');
+        });
+
+        adminTabBtn.addEventListener('click', () => {
+            passcodeModal.style.display = 'flex';
+        });
+
+        calendarTabBtn.addEventListener('click', () => {
+            userTabBtn.classList.remove('active');
+            adminTabBtn.classList.remove('active');
+            calendarTabBtn.classList.add('active');
+            userPanel.classList.remove('active');
+            adminPanel.classList.remove('active');
+            calendarPanel.classList.add('active');
+        });
+
+        passcodeSubmitBtn.addEventListener('click', () => {
+            if (passcodeInput.value === 'admin123') {
+                passcodeModal.style.display = 'none';
+                userTabBtn.classList.remove('active');
+                adminTabBtn.classList.add('active');
+                calendarTabBtn.classList.remove('active');
+                userPanel.classList.remove('active');
+                adminPanel.classList.add('active');
+                calendarPanel.classList.remove('active');
+                showMessage("Admin access granted.", 'success');
+            } else {
+                showMessage("Incorrect passcode.", 'error');
+            }
+            passcodeInput.value = '';
+        });
+        
+        passcodeCancelBtn.addEventListener('click', () => {
+            passcodeModal.style.display = 'none';
+        });
+
+        closePaymentDetails.addEventListener('click', () => {
+            paymentDetailsModal.style.display = 'none';
+        });
+
+        addMemberBtn.addEventListener('click', () => {
+            const name = memberNameInput.value.trim();
+            if (name) {
+                const newMember = {
+                    id: Date.now().toString(),
+                    name: name,
+                    totalPaid: 0,
+                    totalReceived: 0
+                };
+                kametiMembers.push(newMember);
+                saveData();
+                memberNameInput.value = '';
+                showMessage("Member added successfully!", 'success');
+            } else {
+                showMessage("Please enter a member name.", 'error');
+            }
+        });
+
+        membersList.addEventListener('click', (e) => {
+            if (e.target.closest('button')) {
+                const memberId = e.target.closest('button').dataset.id;
+                kametiMembers = kametiMembers.filter(m => m.id !== memberId);
+                paymentsHistory = paymentsHistory.filter(p => p.memberId !== memberId);
+                if (currentKametiHolderId === memberId) {
+                    currentKametiHolderId = null;
+                }
+                saveData();
+                showMessage("Member and their data removed.", 'success');
+            }
+        });
+        
+        checkStatusBtn.addEventListener('click', () => {
+            const memberId = userSelect.value;
+            if (memberId) {
+                const member = kametiMembers.find(m => m.id === memberId);
+                totalPaidEl.textContent = `PKR ${member.totalPaid}`;
+                totalReceivedEl.textContent = `PKR ${member.totalReceived}`;
+                userStats.style.display = 'block';
+                
+                const status = getPaymentStatus(memberId);
+                const now = new Date();
+                const dueText = `Last due date is the ${PAYMENT_DEADLINE_DAY}th of this month.`;
+
+                if (status.status === 'completed') {
+                    const paidDate = status.date.toLocaleDateString();
+                    paymentStatusMessageEl.textContent = `Your payment for this month is COMPLETED! Paid on: ${paidDate}`;
+                    paymentStatusMessageEl.className = 'payment-status-message completed';
+                    paymentStatusMessageEl.style.display = 'block';
+                } else {
+                    const currentDay = now.getDate();
+                    if (currentDay >= 3 && currentDay <= PAYMENT_DEADLINE_DAY) {
+                        paymentStatusMessageEl.textContent = `DANGER: Your payment for this month is PENDING. ${dueText}`;
+                        paymentStatusMessageEl.className = 'payment-status-message warning';
+                        paymentStatusMessageEl.style.display = 'block';
+                    } else {
+                        paymentStatusMessageEl.textContent = `Your payment for this month is PENDING. ${dueText}`;
+                        paymentStatusMessageEl.className = 'payment-status-message pending';
+                        paymentStatusMessageEl.style.display = 'block';
+                    }
+                }
+            } else {
+                userStats.style.display = 'none';
+                paymentStatusMessageEl.style.display = 'none';
+                showMessage("Please select a member.", 'error');
+            }
+        });
+        
+        setHolderBtn.addEventListener('click', () => {
+            const memberId = holderSelect.value;
+            if (memberId) {
+                currentKametiHolderId = memberId;
+                saveData();
+                showMessage("Kameti holder updated successfully!", 'success');
+            } else {
+                showMessage("Please select a member to be the holder.", 'error');
+            }
+        });
+        
+        paymentMemberSelect.addEventListener('change', () => {
+            if (paymentMemberSelect.value) {
+                paymentAmountInput.value = MONTHLY_CONTRIBUTION;
+            } else {
+                paymentAmountInput.value = '';
+            }
+        });
+
+        recordPaymentBtn.addEventListener('click', () => {
+            const memberId = paymentMemberSelect.value;
+            const amount = parseFloat(paymentAmountInput.value);
+            const date = paymentDateInput.value || formatDate(new Date());
+            
+            if (memberId && !isNaN(amount) && amount > 0) {
+                const member = kametiMembers.find(m => m.id === memberId);
+                member.totalPaid += amount;
+                paymentsHistory.push({
+                    type: 'payment',
+                    memberId: memberId,
+                    amount: amount,
+                    date: date,
+                    monthId: currentMonthId, // Associate with the current month's cycle
+                });
+                saveData();
+                paymentAmountInput.value = '';
+                showMessage(`Payment of PKR ${amount} recorded for ${member.name}.`, 'success');
+            } else {
+                showMessage("Please select a member and enter a valid amount.", 'error');
+            }
+        });
+
+        payoutMemberSelect.addEventListener('change', () => {
+             const totalKameti = kametiMembers.length * MONTHLY_CONTRIBUTION;
+             payoutAmountInput.value = totalKameti;
+        });
+
+        recordPayoutBtn.addEventListener('click', () => {
+            const memberId = payoutMemberSelect.value;
+            const amount = parseFloat(payoutAmountInput.value);
+            const date = payoutDateInput.value || formatDate(new Date());
+            
+            if (memberId && !isNaN(amount) && amount > 0) {
+                const member = kametiMembers.find(m => m.id === memberId);
+                member.totalReceived += amount;
+                 paymentsHistory.push({
+                    type: 'payout',
+                    memberId: memberId,
+                    amount: amount,
+                    date: date,
+                    monthId: currentMonthId, // Associate with the current month's cycle
+                });
+                saveData();
+                payoutAmountInput.value = '';
+                showMessage(`Payout of PKR ${amount} recorded for ${member.name}.`, 'success');
+            } else {
+                showMessage("Please select a member and enter a valid amount.", 'error');
+            }
+        });
+
+        startNewMonthBtn.addEventListener('click', () => {
+            const totalPaidForMonth = paymentsHistory
+                .filter(p => p.type === 'payment' && p.monthId === currentMonthId)
+                .reduce((sum, p) => sum + p.amount, 0);
+
+            if (totalPaidForMonth >= 30000) {
+                // Generate a new unique month ID
+                currentMonthId = Date.now().toString();
+
+                // Reset totalPaid for each member for the new month
+                kametiMembers.forEach(member => {
+                    member.totalPaid = 0;
+                });
+                
+                // Reset current holder
+                currentKametiHolderId = null;
+                
+                saveData();
+                showMessage("New month started! All monthly payments have been reset.", 'success');
+            } else {
+                showMessage(`Cannot start a new month. Total amount collected is PKR ${totalPaidForMonth}, which is less than the required PKR 30,000.`, 'error');
+            }
+        });
+
+        resetButton.addEventListener('click', () => {
+            confirmModal.style.display = 'flex';
+        });
+
+        confirmResetBtn.addEventListener('click', () => {
+            membersRef.set([]);
+            paymentsRef.set([]);
+            currentHolderRef.set(null);
+            currentMonthRef.set('initial-month');
+            confirmModal.style.display = 'none';
+            userStats.style.display = 'none';
+            paymentStatusMessageEl.style.display = 'none';
+            showMessage("All data has been reset.", 'success');
+        });
+
+        cancelResetBtn.addEventListener('click', () => {
+            confirmModal.style.display = 'none';
+        });
+
+        // Initial load
+        window.onload = function() {
+            loadData();
+        };
+    </script>
+</body>
+</html>
