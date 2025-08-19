@@ -8,7 +8,7 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/fullcalendar@5.11.3/main.min.css">
     <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-firestore-compat.js"></script>
     <style>
         /* General Styles & Dark Theme */
         :root {
@@ -35,6 +35,20 @@
             min-height: 100vh;
             overflow-x: hidden;
             flex-direction: column;
+        }
+        
+        #current-month-heading {
+            font-size: 2.5rem;
+            color: var(--accent-color);
+            text-align: center;
+            margin-bottom: 0;
+        }
+        
+        #current-date-heading {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+            text-align: center;
+            margin-top: 0.5rem;
         }
 
         .container {
@@ -329,8 +343,6 @@
 
         /* Calendar styling */
         #calendar {
-            max-width: 900px;
-            margin: 2rem auto;
             background-color: var(--card-bg);
             border-radius: 8px;
             border: 1px solid var(--border-color);
@@ -435,6 +447,9 @@
     </style>
 </head>
 <body>
+    <h1 id="current-month-heading" style="color: var(--accent-color); text-align: center; margin-bottom: 0;"></h1>
+    <h2 id="current-date-heading" style="color: var(--primary-color); text-align: center; margin-top: 0.5rem;"></h2>
+
     <div class="message-box" id="message-box"></div>
 
     <div id="passcode-modal" class="modal" style="display: none;">
@@ -646,6 +661,9 @@
         const paymentDetailsList = document.getElementById('payment-details-list');
         const closePaymentDetails = document.getElementById('close-payment-details');
         const startNewMonthBtn = document.getElementById('start-new-month-btn');
+        
+        const currentMonthHeading = document.getElementById('current-month-heading');
+        const currentDateHeading = document.getElementById('current-date-heading');
 
         // Constants
         const MONTHLY_CONTRIBUTION = 3000;
@@ -655,31 +673,30 @@
         let kametiMembers = [];
         let paymentsHistory = [];
         let currentKametiHolderId = null;
-        let currentMonthId = 'initial-month'; // New variable to track the current month's cycle
+        let currentMonthId = 'initial-month'; 
         let contributionsChart, kametiHistoryChart;
         let calendar;
 
-        // Firebase configuration - REPLACE WITH YOUR ACTUAL CONFIG
-         const firebaseConfig = {
-    apiKey: "AIzaSyAZFu6gjgQSNycU0nwwuKaUPIW474QGBlY",
-    authDomain: "comety-bc.firebaseapp.com",
-    projectId: "comety-bc",
-    storageBucket: "comety-bc.firebasestorage.app",
-    messagingSenderId: "374104758281",
-    appId: "1:374104758281:web:df93e2229ddadf955840d8",
-    measurementId: "G-6GBG717HPW"
-  };
+       const firebaseConfig = {
+  apiKey: "AIzaSyAZFu6gjgQSNycU0nwwuKaUPIW474QGBlY",
+  authDomain: "comety-bc.firebaseapp.com",
+  databaseURL: "https://comety-bc-default-rtdb.firebaseio.com",
+  projectId: "comety-bc",
+  storageBucket: "comety-bc.firebasestorage.app",
+  messagingSenderId: "374104758281",
+  appId: "1:374104758281:web:df93e2229ddadf955840d8",
+  measurementId: "G-6GBG717HPW"
+};
 
         // Initialize Firebase
         firebase.initializeApp(firebaseConfig);
-        const database = firebase.database();
+        const db = firebase.firestore();
 
-        // Firebase references
-        const kametiRef = database.ref('kameti');
-        const membersRef = kametiRef.child('members');
-        const paymentsRef = kametiRef.child('payments');
-        const currentHolderRef = kametiRef.child('currentHolder');
-        const currentMonthRef = kametiRef.child('currentMonthId');
+        // Firestore references
+        const membersCol = db.collection('members');
+        const paymentsCol = db.collection('payments');
+        const appDataDoc = db.collection('appData').doc('kametiData');
+
 
         // Utility Functions
         function formatDate(date) {
@@ -705,57 +722,74 @@
         }
 
         // Data Functions
-        function loadData() {
-            // Load members
-            membersRef.on('value', (snapshot) => {
-                kametiMembers = snapshot.val() || [];
+        async function loadData() {
+            try {
+                // Load app-level data (holder and month ID)
+                const appDataSnap = await appDataDoc.get();
+                if (appDataSnap.exists) {
+                    const data = appDataSnap.data();
+                    currentKametiHolderId = data.currentKametiHolderId || null;
+                    currentMonthId = data.currentMonthId || 'initial-month';
+                }
+
+                // Load members
+                const membersSnap = await membersCol.get();
+                kametiMembers = membersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
                 if (kametiMembers.length === 0) {
-                    addDefaultMembers();
+                    await addDefaultMembers();
                 }
-                renderUI();
-            });
 
-            // Load payments
-            paymentsRef.on('value', (snapshot) => {
-                paymentsHistory = snapshot.val() || [];
-                renderUI();
-            });
+                // Load payments
+                const paymentsSnap = await paymentsCol.get();
+                paymentsHistory = paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-            // Load current holder
-            currentHolderRef.on('value', (snapshot) => {
-                currentKametiHolderId = snapshot.val();
                 renderUI();
-            });
 
-            // Load current month ID
-            currentMonthRef.on('value', (snapshot) => {
-                currentMonthId = snapshot.val() || 'initial-month';
-                renderUI();
-            });
+            } catch (error) {
+                console.error("Error loading data: ", error);
+                showMessage("Failed to load data.", 'error');
+            }
         }
 
-        function saveData() {
-            // Save all data to Firebase
-            membersRef.set(kametiMembers);
-            paymentsRef.set(paymentsHistory);
-            currentHolderRef.set(currentKametiHolderId);
-            currentMonthRef.set(currentMonthId);
+        async function saveData() {
+            try {
+                // Update app-level data
+                await appDataDoc.set({
+                    currentKametiHolderId: currentKametiHolderId,
+                    currentMonthId: currentMonthId
+                });
+
+                // Update members (this is a full rewrite for simplicity, but a batched update would be better)
+                const batch = db.batch();
+                kametiMembers.forEach(member => {
+                    const docRef = membersCol.doc(member.id);
+                    batch.set(docRef, member);
+                });
+                await batch.commit();
+
+                // Payments are handled on a per-transaction basis
+                
+            } catch (error) {
+                console.error("Error saving data: ", error);
+                showMessage("Failed to save data.", 'error');
+            }
         }
 
-        function addDefaultMembers() {
+        async function addDefaultMembers() {
             const defaultMembers = [
-                { id: '1', name: 'Ali', totalPaid: 0, totalReceived: 0 },
-                { id: '2', name: 'Fatima', totalPaid: 0, totalReceived: 0 },
-                { id: '3', name: 'Hassan', totalPaid: 0, totalReceived: 0 }
+                { name: 'Ali', totalPaid: 0, totalReceived: 0 },
+                { name: 'Fatima', totalPaid: 0, totalReceived: 0 },
+                { name: 'Hassan', totalPaid: 0, totalReceived: 0 }
             ];
-            membersRef.set(defaultMembers, (error) => {
-                if (error) {
-                    showMessage("Failed to add default members", 'error');
-                } else {
-                    kametiMembers = defaultMembers;
-                    showMessage("Default members added", 'success');
-                }
+            const batch = db.batch();
+            defaultMembers.forEach(member => {
+                const docRef = membersCol.doc();
+                batch.set(docRef, member);
             });
+            await batch.commit();
+            await loadData();
+            showMessage("Default members added", 'success');
         }
 
         // UI Rendering Functions
@@ -894,27 +928,21 @@
         }
 
         function renderCalendar() {
-            if (!calendar) {
-                const calendarEl = document.getElementById('calendar');
-                calendar = new FullCalendar.Calendar(calendarEl, {
-                    initialView: 'dayGridMonth',
-                    headerToolbar: {
-                        left: 'prev,next today',
-                        center: 'title',
-                        right: 'dayGridMonth,dayGridWeek,dayGridDay'
-                    },
-                    events: generateCalendarEvents(),
-                    eventClick: function(info) {
-                        showPaymentDetails(info.event.startStr);
-                    },
-                    eventDisplay: 'block'
-                });
-                calendar.render();
-            } else {
-                calendar.removeAllEvents();
-                calendar.addEventSource(generateCalendarEvents());
-                calendar.refetchEvents();
-            }
+            const calendarEl = document.getElementById('calendar');
+            calendar = new FullCalendar.Calendar(calendarEl, {
+                initialView: 'dayGridMonth',
+                headerToolbar: {
+                    left: 'prev,next today',
+                    center: 'title',
+                    right: 'dayGridMonth,dayGridWeek,dayGridDay'
+                },
+                events: generateCalendarEvents(),
+                eventClick: function(info) {
+                    showPaymentDetails(info.event.startStr);
+                },
+                eventDisplay: 'block'
+            });
+            calendar.render();
         }
 
         function generateCalendarEvents() {
@@ -1154,8 +1182,13 @@
             renderMemberDropdowns();
             renderMembersList();
             renderPaymentsHistory();
-            renderCalendar();
             renderCharts();
+
+            // Render current month and date headings
+            const month = today.toLocaleString('default', { month: 'long', year: 'numeric' });
+            const date = today.toLocaleString('default', { weekday: 'long', day: 'numeric' });
+            currentMonthHeading.textContent = month;
+            currentDateHeading.textContent = date;
         }
 
         // Event Listeners
@@ -1179,6 +1212,13 @@
             userPanel.classList.remove('active');
             adminPanel.classList.remove('active');
             calendarPanel.classList.add('active');
+
+            // Render the calendar only when the tab is made active
+            if (!calendar) {
+                renderCalendar();
+            } else {
+                calendar.updateSize();
+            }
         });
 
         passcodeSubmitBtn.addEventListener('click', () => {
@@ -1205,17 +1245,16 @@
             paymentDetailsModal.style.display = 'none';
         });
 
-        addMemberBtn.addEventListener('click', () => {
+        addMemberBtn.addEventListener('click', async () => {
             const name = memberNameInput.value.trim();
             if (name) {
                 const newMember = {
-                    id: Date.now().toString(),
                     name: name,
                     totalPaid: 0,
                     totalReceived: 0
                 };
-                kametiMembers.push(newMember);
-                saveData();
+                await membersCol.add(newMember);
+                await loadData();
                 memberNameInput.value = '';
                 showMessage("Member added successfully!", 'success');
             } else {
@@ -1223,16 +1262,23 @@
             }
         });
 
-        membersList.addEventListener('click', (e) => {
+        membersList.addEventListener('click', async (e) => {
             if (e.target.closest('button')) {
                 const memberId = e.target.closest('button').dataset.id;
-                kametiMembers = kametiMembers.filter(m => m.id !== memberId);
-                paymentsHistory = paymentsHistory.filter(p => p.memberId !== memberId);
-                if (currentKametiHolderId === memberId) {
-                    currentKametiHolderId = null;
+                try {
+                    await membersCol.doc(memberId).delete();
+                    const paymentsSnap = await paymentsCol.where('memberId', '==', memberId).get();
+                    const batch = db.batch();
+                    paymentsSnap.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                    await loadData();
+                    showMessage("Member and their data removed.", 'success');
+                } catch (error) {
+                    console.error("Error removing member: ", error);
+                    showMessage("Failed to remove member.", 'error');
                 }
-                saveData();
-                showMessage("Member and their data removed.", 'success');
             }
         });
         
@@ -1272,11 +1318,11 @@
             }
         });
         
-        setHolderBtn.addEventListener('click', () => {
+        setHolderBtn.addEventListener('click', async () => {
             const memberId = holderSelect.value;
             if (memberId) {
                 currentKametiHolderId = memberId;
-                saveData();
+                await saveData();
                 showMessage("Kameti holder updated successfully!", 'success');
             } else {
                 showMessage("Please select a member to be the holder.", 'error');
@@ -1291,24 +1337,37 @@
             }
         });
 
-        recordPaymentBtn.addEventListener('click', () => {
+        recordPaymentBtn.addEventListener('click', async () => {
             const memberId = paymentMemberSelect.value;
             const amount = parseFloat(paymentAmountInput.value);
             const date = paymentDateInput.value || formatDate(new Date());
             
             if (memberId && !isNaN(amount) && amount > 0) {
-                const member = kametiMembers.find(m => m.id === memberId);
-                member.totalPaid += amount;
-                paymentsHistory.push({
+                const memberRef = membersCol.doc(memberId);
+                await memberRef.update({
+                    totalPaid: firebase.firestore.FieldValue.increment(amount)
+                });
+                
+                const d = new Date(date);
+                const newPayment = {
                     type: 'payment',
                     memberId: memberId,
                     amount: amount,
                     date: date,
-                    monthId: currentMonthId, // Associate with the current month's cycle
-                });
-                saveData();
+                    month: d.getMonth() + 1, // Month as a number (1-12)
+                    day: d.getDate(), // Day of the month
+                    monthId: currentMonthId, 
+                };
+                await paymentsCol.add(newPayment);
+
+                // Add this line to reload the calendar
+                if (calendar) {
+                    calendar.refetchEvents();
+                }
+                
+                await loadData();
                 paymentAmountInput.value = '';
-                showMessage(`Payment of PKR ${amount} recorded for ${member.name}.`, 'success');
+                showMessage(`Payment of PKR ${amount} recorded.`, 'success');
             } else {
                 showMessage("Please select a member and enter a valid amount.", 'error');
             }
@@ -1319,48 +1378,62 @@
              payoutAmountInput.value = totalKameti;
         });
 
-        recordPayoutBtn.addEventListener('click', () => {
+        recordPayoutBtn.addEventListener('click', async () => {
             const memberId = payoutMemberSelect.value;
             const amount = parseFloat(payoutAmountInput.value);
             const date = payoutDateInput.value || formatDate(new Date());
             
             if (memberId && !isNaN(amount) && amount > 0) {
-                const member = kametiMembers.find(m => m.id === memberId);
-                member.totalReceived += amount;
-                 paymentsHistory.push({
+                const memberRef = membersCol.doc(memberId);
+                await memberRef.update({
+                    totalReceived: firebase.firestore.FieldValue.increment(amount)
+                });
+
+                const d = new Date(date);
+                const newPayout = {
                     type: 'payout',
                     memberId: memberId,
                     amount: amount,
                     date: date,
-                    monthId: currentMonthId, // Associate with the current month's cycle
-                });
-                saveData();
+                    month: d.getMonth() + 1, // Month as a number (1-12)
+                    day: d.getDate(), // Day of the month
+                    monthId: currentMonthId,
+                };
+                await paymentsCol.add(newPayout);
+
+                // Add this line to reload the calendar
+                if (calendar) {
+                    calendar.refetchEvents();
+                }
+
+                await loadData();
                 payoutAmountInput.value = '';
-                showMessage(`Payout of PKR ${amount} recorded for ${member.name}.`, 'success');
+                showMessage(`Payout of PKR ${amount} recorded.`, 'success');
             } else {
                 showMessage("Please select a member and enter a valid amount.", 'error');
             }
         });
 
-        startNewMonthBtn.addEventListener('click', () => {
+        startNewMonthBtn.addEventListener('click', async () => {
             const totalPaidForMonth = paymentsHistory
                 .filter(p => p.type === 'payment' && p.monthId === currentMonthId)
                 .reduce((sum, p) => sum + p.amount, 0);
 
             if (totalPaidForMonth >= 30000) {
-                // Generate a new unique month ID
                 currentMonthId = Date.now().toString();
 
-                // Reset totalPaid for each member for the new month
+                const batch = db.batch();
                 kametiMembers.forEach(member => {
-                    member.totalPaid = 0;
+                    const docRef = membersCol.doc(member.id);
+                    batch.update(docRef, { totalPaid: 0 });
                 });
+                await batch.commit();
                 
-                // Reset current holder
                 currentKametiHolderId = null;
+                await saveData();
                 
-                saveData();
                 showMessage("New month started! All monthly payments have been reset.", 'success');
+                await loadData();
             } else {
                 showMessage(`Cannot start a new month. Total amount collected is PKR ${totalPaidForMonth}, which is less than the required PKR 30,000.`, 'error');
             }
@@ -1370,15 +1443,28 @@
             confirmModal.style.display = 'flex';
         });
 
-        confirmResetBtn.addEventListener('click', () => {
-            membersRef.set([]);
-            paymentsRef.set([]);
-            currentHolderRef.set(null);
-            currentMonthRef.set('initial-month');
-            confirmModal.style.display = 'none';
-            userStats.style.display = 'none';
-            paymentStatusMessageEl.style.display = 'none';
-            showMessage("All data has been reset.", 'success');
+        confirmResetBtn.addEventListener('click', async () => {
+            const collections = ['members', 'payments', 'appData'];
+            try {
+                for (const colName of collections) {
+                    const colRef = db.collection(colName);
+                    const docsSnap = await colRef.get();
+                    const batch = db.batch();
+                    docsSnap.forEach(doc => {
+                        batch.delete(doc.ref);
+                    });
+                    await batch.commit();
+                }
+                
+                await loadData();
+                confirmModal.style.display = 'none';
+                userStats.style.display = 'none';
+                paymentStatusMessageEl.style.display = 'none';
+                showMessage("All data has been reset.", 'success');
+            } catch (error) {
+                console.error("Error resetting data: ", error);
+                showMessage("Failed to reset data.", 'error');
+            }
         });
 
         cancelResetBtn.addEventListener('click', () => {
