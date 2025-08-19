@@ -523,12 +523,12 @@
             <div id="user-stats" style="display: none;">
                 <div class="stats-grid">
                     <div class="stats-card">
-                        <h3>Total Paid</h3>
-                        <p id="total-paid">PKR 0</p>
+                        <h3>Total Paid This Month</h3>
+                        <p id="total-paid-this-month">PKR 0</p>
                     </div>
                     <div class="stats-card">
-                        <h3>Total Received</h3>
-                        <p id="total-received">PKR 0</p>
+                        <h3>Total Paid Lifetime</h3>
+                        <p id="total-paid-lifetime">PKR 0</p>
                     </div>
                 </div>
                 <div id="payment-status-message" class="payment-status-message" style="display: none;"></div>
@@ -548,8 +548,13 @@
         <div id="admin-panel" class="tab-content">
             <h2>Admin Controls</h2>
             
-            <h3>Current Date: <span id="current-date-display"></span></h3>
+            <h3>Current Month: <span id="current-month-display"></span></h3>
             
+            <div style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                <button id="prev-month-btn" class="tab-button">Previous Month</button>
+                <button id="next-month-btn" class="tab-button">Next Month</button>
+            </div>
+
             <h3>Add Member</h3>
             <div class="form-group form-group-row">
                 <input type="text" id="member-name-input" placeholder="Enter member name">
@@ -632,8 +637,8 @@
         const userSelect = document.getElementById('user-select');
         const checkStatusBtn = document.getElementById('check-status-btn');
         const userStats = document.getElementById('user-stats');
-        const totalPaidEl = document.getElementById('total-paid');
-        const totalReceivedEl = document.getElementById('total-received');
+        const totalPaidThisMonthEl = document.getElementById('total-paid-this-month'); 
+        const totalPaidLifetimeEl = document.getElementById('total-paid-lifetime'); 
         const paymentStatusMessageEl = document.getElementById('payment-status-message');
         const paymentMemberSelect = document.getElementById('payment-member-select');
         const paymentAmountInput = document.getElementById('payment-amount-input');
@@ -661,24 +666,18 @@
         const paymentDetailsList = document.getElementById('payment-details-list');
         const closePaymentDetails = document.getElementById('close-payment-details');
         const startNewMonthBtn = document.getElementById('start-new-month-btn');
+        const prevMonthBtn = document.getElementById('prev-month-btn');
+        const nextMonthBtn = document.getElementById('next-month-btn');
         
         const currentMonthHeading = document.getElementById('current-month-heading');
         const currentDateHeading = document.getElementById('current-date-heading');
+        const currentMonthDisplay = document.getElementById('current-month-display');
 
         // Constants
         const MONTHLY_CONTRIBUTION = 3000;
         const PAYMENT_DEADLINE_DAY = 5;
-
-        // Data Variables
-        let kametiMembers = [];
-        let paymentsHistory = [];
-        let currentKametiHolderId = null;
-        let currentMonthId = 'initial-month'; 
-        let contributionsChart, kametiHistoryChart;
-        let calendar;
-
-       const firebaseConfig = {
-  apiKey: "AIzaSyAZFu6gjgQSNycU0nwwuKaUPIW474QGBlY",
+        const FIREBASE_CONFIG = {
+ apiKey: "AIzaSyAZFu6gjgQSNycU0nwwuKaUPIW474QGBlY",
   authDomain: "comety-bc.firebaseapp.com",
   databaseURL: "https://comety-bc-default-rtdb.firebaseio.com",
   projectId: "comety-bc",
@@ -686,10 +685,20 @@
   messagingSenderId: "374104758281",
   appId: "1:374104758281:web:df93e2229ddadf955840d8",
   measurementId: "G-6GBG717HPW"
-};
+        };
+
+
+        // Data Variables
+        let kametiMembers = [];
+        let paymentsHistory = [];
+        let currentKametiHolderId = null;
+        let currentMonthId = null; 
+        let currentMonthDate = null;
+        let contributionsChart, kametiHistoryChart;
+        let calendar;
 
         // Initialize Firebase
-        firebase.initializeApp(firebaseConfig);
+        firebase.initializeApp(FIREBASE_CONFIG);
         const db = firebase.firestore();
 
         // Firestore references
@@ -729,20 +738,37 @@
                 if (appDataSnap.exists) {
                     const data = appDataSnap.data();
                     currentKametiHolderId = data.currentKametiHolderId || null;
-                    currentMonthId = data.currentMonthId || 'initial-month';
+                    currentMonthId = data.currentMonthId || null;
+                    currentMonthDate = data.currentMonthDate ? new Date(data.currentMonthDate) : new Date();
+                } else {
+                    currentMonthDate = new Date();
+                    currentMonthId = currentMonthDate.toISOString().slice(0, 7); // YYYY-MM format
+                    await appDataDoc.set({
+                        currentMonthId: currentMonthId,
+                        currentMonthDate: currentMonthDate.toISOString().slice(0, 10)
+                    });
                 }
-
+                
                 // Load members
                 const membersSnap = await membersCol.get();
                 kametiMembers = membersSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
                 if (kametiMembers.length === 0) {
                     await addDefaultMembers();
+                    return;
                 }
 
                 // Load payments
                 const paymentsSnap = await paymentsCol.get();
                 paymentsHistory = paymentsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                
+                // Set default dates for inputs based on the current app month, not the system date
+                const currentDay = new Date().getDate();
+                const currentYear = currentMonthDate.getFullYear();
+                const currentMonth = currentMonthDate.getMonth();
+                const newDateForInput = new Date(currentYear, currentMonth, currentDay);
+                paymentDateInput.value = formatDate(newDateForInput);
+                payoutDateInput.value = formatDate(newDateForInput);
 
                 renderUI();
 
@@ -757,19 +783,9 @@
                 // Update app-level data
                 await appDataDoc.set({
                     currentKametiHolderId: currentKametiHolderId,
-                    currentMonthId: currentMonthId
+                    currentMonthId: currentMonthId,
+                    currentMonthDate: currentMonthDate.toISOString().slice(0, 10)
                 });
-
-                // Update members (this is a full rewrite for simplicity, but a batched update would be better)
-                const batch = db.batch();
-                kametiMembers.forEach(member => {
-                    const docRef = membersCol.doc(member.id);
-                    batch.set(docRef, member);
-                });
-                await batch.commit();
-
-                // Payments are handled on a per-transaction basis
-                
             } catch (error) {
                 console.error("Error saving data: ", error);
                 showMessage("Failed to save data.", 'error');
@@ -824,7 +840,7 @@
             }
 
             // Show/hide the "Start New Month" button
-            if (totalPaidForMonth >= 30000) {
+            if (totalPaidForMonth >= (kametiMembers.length * MONTHLY_CONTRIBUTION)) {
                 startNewMonthBtn.style.display = 'block';
             } else {
                 startNewMonthBtn.style.display = 'none';
@@ -847,16 +863,20 @@
         }
         
         function getPaymentStatus(memberId) {
-            const lastPayment = paymentsHistory.find(p => p.type === 'payment' && p.memberId === memberId && p.monthId === currentMonthId);
-            
-            if (lastPayment) {
+            const paymentsForMonth = paymentsHistory.filter(p => p.type === 'payment' && p.memberId === memberId && p.monthId === currentMonthId);
+            const totalPaidForMonth = paymentsForMonth.reduce((sum, p) => sum + p.amount, 0);
+
+            if (totalPaidForMonth >= MONTHLY_CONTRIBUTION) {
                 return {
                     status: 'completed',
-                    date: new Date(lastPayment.date)
+                    totalPaid: totalPaidForMonth
                 };
             } else {
+                const remaining = MONTHLY_CONTRIBUTION - totalPaidForMonth;
                 return {
-                    status: 'pending'
+                    status: 'pending',
+                    totalPaid: totalPaidForMonth,
+                    remaining: remaining
                 };
             }
         }
@@ -896,8 +916,10 @@
                 return;
             }
 
-            // Group payments by date
-            const groupedPayments = paymentsHistory.sort((a, b) => new Date(b.date) - new Date(a.date)).reduce((acc, record) => {
+            // Group payments by date for the current month
+            const paymentsForMonth = paymentsHistory.filter(p => p.monthId === currentMonthId);
+
+            const groupedPayments = paymentsForMonth.sort((a, b) => new Date(b.date) - new Date(a.date)).reduce((acc, record) => {
                 const date = new Date(record.date).toLocaleDateString();
                 if (!acc[date]) {
                     acc[date] = [];
@@ -931,6 +953,7 @@
             const calendarEl = document.getElementById('calendar');
             calendar = new FullCalendar.Calendar(calendarEl, {
                 initialView: 'dayGridMonth',
+                initialDate: currentMonthDate,
                 headerToolbar: {
                     left: 'prev,next today',
                     center: 'title',
@@ -1167,15 +1190,14 @@
         }
 
         function renderUI() {
-            // Current date display
-            const today = new Date();
-            const options = { year: 'numeric', month: 'long', day: 'numeric' };
-            currentDateDisplay.textContent = today.toLocaleDateString('en-US', options);
-            
-            // Set default dates for inputs
-            const todayFormatted = formatDate(today);
-            paymentDateInput.value = todayFormatted;
-            payoutDateInput.value = todayFormatted;
+            // Current month and date display
+            if (currentMonthDate) {
+                const month = currentMonthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+                currentMonthHeading.textContent = month;
+                currentMonthDisplay.textContent = month;
+            }
+            const date = new Date().toLocaleDateString('default', { weekday: 'long', day: 'numeric' });
+            currentDateHeading.textContent = date;
             
             renderCurrentHolder();
             renderFinancials();
@@ -1183,12 +1205,6 @@
             renderMembersList();
             renderPaymentsHistory();
             renderCharts();
-
-            // Render current month and date headings
-            const month = today.toLocaleString('default', { month: 'long', year: 'numeric' });
-            const date = today.toLocaleString('default', { weekday: 'long', day: 'numeric' });
-            currentMonthHeading.textContent = month;
-            currentDateHeading.textContent = date;
         }
 
         // Event Listeners
@@ -1217,6 +1233,8 @@
             if (!calendar) {
                 renderCalendar();
             } else {
+                calendar.gotoDate(currentMonthDate);
+                calendar.refetchEvents();
                 calendar.updateSize();
             }
         });
@@ -1284,37 +1302,34 @@
         
         checkStatusBtn.addEventListener('click', () => {
             const memberId = userSelect.value;
+            userStats.style.display = 'none'; 
+            paymentStatusMessageEl.style.display = 'none';
+            
             if (memberId) {
                 const member = kametiMembers.find(m => m.id === memberId);
-                totalPaidEl.textContent = `PKR ${member.totalPaid}`;
-                totalReceivedEl.textContent = `PKR ${member.totalReceived}`;
+                if (!member) {
+                    showMessage("Selected member not found in data.", 'error');
+                    return;
+                }
+
+                const status = getPaymentStatus(memberId);
+                
+                totalPaidThisMonthEl.textContent = `PKR ${status.totalPaid.toFixed(2)}`;
+                totalPaidLifetimeEl.textContent = `PKR ${member.totalPaid.toFixed(2)}`;
+                
                 userStats.style.display = 'block';
                 
-                const status = getPaymentStatus(memberId);
-                const now = new Date();
-                const dueText = `Last due date is the ${PAYMENT_DEADLINE_DAY}th of this month.`;
-
                 if (status.status === 'completed') {
-                    const paidDate = status.date.toLocaleDateString();
-                    paymentStatusMessageEl.textContent = `Your payment for this month is COMPLETED! Paid on: ${paidDate}`;
+                    paymentStatusMessageEl.textContent = `Your payment for this month is COMPLETED!`;
                     paymentStatusMessageEl.className = 'payment-status-message completed';
-                    paymentStatusMessageEl.style.display = 'block';
                 } else {
-                    const currentDay = now.getDate();
-                    if (currentDay >= 3 && currentDay <= PAYMENT_DEADLINE_DAY) {
-                        paymentStatusMessageEl.textContent = `DANGER: Your payment for this month is PENDING. ${dueText}`;
-                        paymentStatusMessageEl.className = 'payment-status-message warning';
-                        paymentStatusMessageEl.style.display = 'block';
-                    } else {
-                        paymentStatusMessageEl.textContent = `Your payment for this month is PENDING. ${dueText}`;
-                        paymentStatusMessageEl.className = 'payment-status-message pending';
-                        paymentStatusMessageEl.style.display = 'block';
-                    }
+                    const remainingAmount = status.remaining;
+                    paymentStatusMessageEl.textContent = `Your payment for this month is PENDING. You still need to pay PKR ${remainingAmount.toFixed(2)}.`;
+                    paymentStatusMessageEl.className = 'payment-status-message pending';
                 }
+                paymentStatusMessageEl.style.display = 'block';
             } else {
-                userStats.style.display = 'none';
-                paymentStatusMessageEl.style.display = 'none';
-                showMessage("Please select a member.", 'error');
+                showMessage("Please select a member to check your status.", 'error');
             }
         });
         
@@ -1340,23 +1355,20 @@
         recordPaymentBtn.addEventListener('click', async () => {
             const memberId = paymentMemberSelect.value;
             const amount = parseFloat(paymentAmountInput.value);
-            const date = paymentDateInput.value || formatDate(new Date());
+            const date = paymentDateInput.value;
             
-            if (memberId && !isNaN(amount) && amount > 0) {
+            if (memberId && !isNaN(amount) && amount > 0 && date) {
                 const memberRef = membersCol.doc(memberId);
                 await memberRef.update({
                     totalPaid: firebase.firestore.FieldValue.increment(amount)
                 });
                 
-                const d = new Date(date);
                 const newPayment = {
                     type: 'payment',
                     memberId: memberId,
                     amount: amount,
                     date: date,
-                    month: d.getMonth() + 1, // Month as a number (1-12)
-                    day: d.getDate(), // Day of the month
-                    monthId: currentMonthId, 
+                    monthId: new Date(date).toISOString().slice(0, 7), 
                 };
                 await paymentsCol.add(newPayment);
 
@@ -1369,7 +1381,7 @@
                 paymentAmountInput.value = '';
                 showMessage(`Payment of PKR ${amount} recorded.`, 'success');
             } else {
-                showMessage("Please select a member and enter a valid amount.", 'error');
+                showMessage("Please select a member, enter a valid amount, and select a date.", 'error');
             }
         });
 
@@ -1381,23 +1393,20 @@
         recordPayoutBtn.addEventListener('click', async () => {
             const memberId = payoutMemberSelect.value;
             const amount = parseFloat(payoutAmountInput.value);
-            const date = payoutDateInput.value || formatDate(new Date());
+            const date = payoutDateInput.value;
             
-            if (memberId && !isNaN(amount) && amount > 0) {
+            if (memberId && !isNaN(amount) && amount > 0 && date) {
                 const memberRef = membersCol.doc(memberId);
                 await memberRef.update({
                     totalReceived: firebase.firestore.FieldValue.increment(amount)
                 });
 
-                const d = new Date(date);
                 const newPayout = {
                     type: 'payout',
                     memberId: memberId,
                     amount: amount,
                     date: date,
-                    month: d.getMonth() + 1, // Month as a number (1-12)
-                    day: d.getDate(), // Day of the month
-                    monthId: currentMonthId,
+                    monthId: new Date(date).toISOString().slice(0, 7),
                 };
                 await paymentsCol.add(newPayout);
 
@@ -1410,7 +1419,7 @@
                 payoutAmountInput.value = '';
                 showMessage(`Payout of PKR ${amount} recorded.`, 'success');
             } else {
-                showMessage("Please select a member and enter a valid amount.", 'error');
+                showMessage("Please select a member, enter a valid amount, and select a date.", 'error');
             }
         });
 
@@ -1419,15 +1428,10 @@
                 .filter(p => p.type === 'payment' && p.monthId === currentMonthId)
                 .reduce((sum, p) => sum + p.amount, 0);
 
-            if (totalPaidForMonth >= 30000) {
-                currentMonthId = Date.now().toString();
-
-                const batch = db.batch();
-                kametiMembers.forEach(member => {
-                    const docRef = membersCol.doc(member.id);
-                    batch.update(docRef, { totalPaid: 0 });
-                });
-                await batch.commit();
+            if (totalPaidForMonth >= (kametiMembers.length * MONTHLY_CONTRIBUTION)) {
+                
+                currentMonthDate.setMonth(currentMonthDate.getMonth() + 1);
+                currentMonthId = currentMonthDate.toISOString().slice(0, 7);
                 
                 currentKametiHolderId = null;
                 await saveData();
@@ -1435,8 +1439,22 @@
                 showMessage("New month started! All monthly payments have been reset.", 'success');
                 await loadData();
             } else {
-                showMessage(`Cannot start a new month. Total amount collected is PKR ${totalPaidForMonth}, which is less than the required PKR 30,000.`, 'error');
+                showMessage(`Cannot start a new month. Total amount collected is PKR ${totalPaidForMonth}, which is less than the required PKR ${kametiMembers.length * MONTHLY_CONTRIBUTION}.`, 'error');
             }
+        });
+        
+        prevMonthBtn.addEventListener('click', async () => {
+            currentMonthDate.setMonth(currentMonthDate.getMonth() - 1);
+            currentMonthId = currentMonthDate.toISOString().slice(0, 7);
+            await saveData();
+            await loadData();
+        });
+        
+        nextMonthBtn.addEventListener('click', async () => {
+            currentMonthDate.setMonth(currentMonthDate.getMonth() + 1);
+            currentMonthId = currentMonthDate.toISOString().slice(0, 7);
+            await saveData();
+            await loadData();
         });
 
         resetButton.addEventListener('click', () => {
