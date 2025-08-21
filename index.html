@@ -78,7 +78,21 @@
             color: var(--primary-color);
             font-size: 0.9rem;
         }
-        
+        @media (max-width: 767px) {
+    .fc-toolbar {
+        flex-direction: column;
+    }
+    .fc-toolbar .fc-toolbar-chunk {
+        margin-bottom: 0.5rem;
+    }
+    .fc-toolbar-title {
+        font-size: 1.25rem;
+    }
+    .fc-button-group .fc-button {
+        padding: 0.5rem;
+        font-size: 0.8rem;
+    }
+}
         .current-holder-display {
             text-align: center;
             margin-bottom: 1.5rem;
@@ -94,7 +108,12 @@
             color: var(--accent-color);
             margin: 0;
         }
-
+@media (max-width: 480px) {
+    .fc-header-toolbar .fc-dayGridWeek-button,
+    .fc-header-toolbar .fc-dayGridDay-button {
+        display: none;
+    }
+}
         .tabs {
             display: flex;
             justify-content: center;
@@ -112,7 +131,13 @@
             margin: 0 0.25rem;
             flex-grow: 1;
         }
-
+.fc-daygrid-day-number {
+    font-size: 0.75rem;
+}
+.fc-event {
+    font-size: 0.7rem;
+    padding: 0.1rem;
+}
         .tab-button.active {
             background-color: var(--accent-color);
             color: var(--bg-color);
@@ -1497,5 +1522,3 @@
 </body>
 
 </html>
-
-
